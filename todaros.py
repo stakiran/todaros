@@ -42,7 +42,7 @@ def get_today_dow_longname():
     dtobj = get_today_datetimeobj()
     dow_index = dtobj.weekday()
 
-    dow_longnames = ['monday',"tuesday", "wednesday", "thursday","friday","saturday","sunay"]
+    dow_longnames = ['monday',"tuesday", "wednesday", "thursday","friday","saturday","sunday"]
     return dow_longnames[dow_index]
 
 def _________func________():
