@@ -15,6 +15,14 @@ Create your today daily routines.
     - 1: Do `python todaros.py`.
     - 2: Open `daily.md`.
 
+## sort order
+- Lines with prefix of `0 ` ～ `9 `
+- @1
+- @2
+- @3
+- DOWs
+- Days
+
 ## License
 [MIT License](LICENSE)
 
