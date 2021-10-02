@@ -1,5 +1,6 @@
 # encoding: utf-8
 
+import copy
 import datetime
 import glob
 import os
@@ -88,75 +89,129 @@ def pickup_corresponded_filenames(filenames):
 
     return outnames
 
-def file2list_from_filenames(filenames, ignoring_prefix):
-    '''
-    [ignoring_prefix]
-    - これに合致するファイル名は読み込まない
-    - 代わりに, ファイル名をそのまま追加する
+# Routine Group という単語を定義する
+# - ('@1', '@1.md') のようなタプル
+# - (prefix, filename)
+#   - filename には n 個のタスク行が書かれている
+#   - prefix は、各タスク行の先頭に付与する補足文字列
 
-    もっぱら区切り文字列用途.
-    区切り入れるタイミングが sort_and_delimiterize_better() しかないので,
-    ここでは（その時に入れられた）区切りを消さないようお膳立てする必要がある. '''
-
-    result_outlines = []
-    for filename in filenames:
-        if filename.startswith(ignoring_prefix):
-            result_outlines.append(filename)
-            continue
-        outlines = file2list(filename)
-        result_outlines.extend(outlines)
-    return result_outlines
-
-def sort_and_delimiterize_better(filenames):
-    # ソートする.
-    # 一番自然な以下の順(出現頻度の多い順)にする.
-    # 1
-    #   @1
-    #   @2 系
-    #   @3 系
-    # 2
-    #   DOW 系
-    # 3
-    #   day 系
-
-    # 境界がわかりづらいのでタイトルと空行も入れる.
-
-    order1_per1 = []
-    order1_per2 = []
-    order1_per3 = []
-    order2 = []
-    order3 = []
+def create_routinegroups(filenames):
+    routinegroups = []
+    rgs = routinegroups
 
     for filename in filenames:
         if filename.startswith('@1'):
-            order1_per1.append(filename)
+            rgs.append(('@1', filename))
             continue
         if filename.startswith('@2'):
-            order1_per2.append(filename)
+            rgs.append(('@2', filename))
             continue
         if filename.startswith('@3'):
-            order1_per3.append(filename)
+            rgs.append(('@3', filename))
             continue
-
         if filename.endswith('day.md'):
-            order2.append(filename)
+            rgs.append(('[Dow]', filename))
             continue
+        rgs.append(('[Day]', filename))
 
-        order3.append(filename)
+    return rgs
+
+def file2list_from_routinegroups(routinegroups):
+    ''' @params routinegroups routinegroupのリスト '''
+
+    result_outlines = []
+
+    for routinegroup in routinegroups:
+        prefix, filename = routinegroup
+        outlines = file2list(filename)
+
+        outlines = [line for line in outlines if len(line.strip())!=0]
+
+        # prefix だと次の reconstruction で上手くいかない
+        # こうしたいのに
+        #   1 @1 毎日やりたいタスク1
+        #   1 @1 毎日やりたいタスク2
+        # こうなってしまう、
+        #   @1 1 毎日やりたいタスク1
+        #   @1 1 毎日やりたいタスク2
+        #
+        # 前者の実装は文字列操作がしんどいので、以下のようにする
+        #   1 毎日やりたいタスク1 @1
+        #   1 毎日やりたいタスク2 @1
+        suffix = prefix
+        #outlines = ['{} {}'.format(prefix, line) for line in outlines]
+        outlines = ['{} {}'.format(line, suffix) for line in outlines]
+
+        result_outlines.extend(outlines)
+
+    return result_outlines
+
+def reconstruction_tasklines_with_extract_merge(lines):
+    # extract and merge
+    # 指定観点で抽出(extact)した部分リストをつくったあと、
+    # それらを指定順序で併合(merge)することで
+    # 意図した並びのリストをつくる手法.
 
     outlines = []
-    outlines.append('---- @1 ----')
-    outlines.extend(order1_per1)
-    outlines.append('---- @2 ----')
-    outlines.extend(order1_per2)
-    outlines.append('---- @3 ----')
-    outlines.extend(order1_per3)
-    outlines.append('---- DOW ----')
-    outlines.extend(order2)
-    outlines.append('---- Day ----')
-    outlines.extend(order3)
+
+    extractee = copy.deepcopy(lines)
+    prefix_extracters = [
+        '0 ',
+        '1 ',
+        '2 ',
+        '3 ',
+        '4 ',
+        '5 ',
+        '6 ',
+        '7 ',
+        '8 ',
+        '9 ',
+    ]
+
+    for prefix_extracter in prefix_extracters:
+        extracted_lines = []
+        for line in extractee:
+            not_included = not line.startswith(prefix_extracter)
+            if not_included:
+                continue
+            extracted_lines.append(line)
+
+        outlines.extend(extracted_lines)
+
+        for extracted_line in extracted_lines:
+            extractee.remove(extracted_line)
+
+    # 最後に「抽出されなかった行たち」を merge する必要がある。
+    # これを行いたいがために、上記処理では extractee を破壊的に remove していっている。
+    not_extracted_lines = extractee
+    outlines.extend(not_extracted_lines)
 
     return outlines
+
+def ________arguments________():
+    pass
+
+def parse_arguments():
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+
+    parser.add_argument('--debug', default=False, action='store_true',
+        help='debug print.')
+
+    args = parser.parse_args()
+    return args
+
+def dp(msg):
+    if args.debug:
+        print(msg)
+
+def ________main________():
+    pass
+
+args = parse_arguments()
 
 MYFULLPATH = os.path.abspath(sys.argv[0])
 MYDIR = os.path.dirname(MYFULLPATH)
@@ -165,13 +220,15 @@ OUTNAME = 'daily.md'
 OUT_FULLPATH = os.path.join(MYDIR, OUTNAME)
 
 all_filenames = get_markdown_filenames_only_currentlevel(MYDIR)
-print(all_filenames)
+dp(all_filenames)
 
 loadee_filenames = pickup_corresponded_filenames(all_filenames)
-print(loadee_filenames)
+dp(loadee_filenames)
 
-loadee_filenames = sort_and_delimiterize_better(loadee_filenames)
-print(loadee_filenames)
+routinegroups = create_routinegroups(loadee_filenames)
+dp(routinegroups)
 
-outlines = file2list_from_filenames(loadee_filenames, ignoring_prefix='-')
+tasklines = file2list_from_routinegroups(routinegroups)
+
+outlines = reconstruction_tasklines_with_extract_merge(tasklines)
 list2file(OUT_FULLPATH, outlines)
