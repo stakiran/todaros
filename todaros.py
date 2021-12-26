@@ -201,12 +201,54 @@ def parse_arguments():
     parser.add_argument('--debug', default=False, action='store_true',
         help='debug print.')
 
+    parser.add_argument('--overview', default=False, action='store_true',
+        help='Generate overview.md.')
+
     args = parser.parse_args()
     return args
 
 def dp(msg):
     if args.debug:
         print(msg)
+
+def generate_overview(basedir, outname, maybe_mergee_filenames):
+    mergee_filenames = []
+    outlines = []
+
+    # ルーチンを定義してない無関係ファイルを除く。
+    # 良いやり方浮かばないので、todarosが扱っているファイル名が存在してるかを愚直に調べていく。
+    # これには意図した順番で append したいという意図もある。
+    for i in range(31):
+        day = i+1
+        dayfilename = '{}.md'.format(day)
+        notfound = not dayfilename in maybe_mergee_filenames
+        if notfound:
+            continue
+        mergee_filenames.append(dayfilename)
+    for routinefilename in ['@1.md','@2_slot1.md','@2_slot2.md','@3_slot1.md','@3_slot2.md','@3_slot3.md']:
+        notfound = not routinefilename in maybe_mergee_filenames
+        if notfound:
+            continue
+        mergee_filenames.append(routinefilename)
+    # 作者の好みで月曜始まり
+    for dowfilename in ['monday.md','tuesday.md','wednesday.md','thursday.md','friday.md','saturday.md','sunday.md']:
+        notfound = not dowfilename in maybe_mergee_filenames
+        if notfound:
+            continue
+        mergee_filenames.append(dowfilename)
+
+    for mergee_filename in mergee_filenames:
+        mergee_fullpath = os.path.join(basedir, mergee_filename)
+        mergee_content_lines = file2list(mergee_fullpath)
+
+        outlines.append('# {}'.format(mergee_filename))
+        outlines.extend(mergee_content_lines)
+
+        blankline_for_readability = ''
+        outlines.append(blankline_for_readability)
+
+    outfullpath = os.path.join(basedir, outname)
+    list2file(outfullpath, outlines)
 
 def ________main________():
     pass
@@ -221,6 +263,15 @@ OUT_FULLPATH = os.path.join(MYDIR, OUTNAME)
 
 all_filenames = get_markdown_filenames_only_currentlevel(MYDIR)
 dp(all_filenames)
+
+if args.overview:
+    routinegroups = create_routinegroups(all_filenames)
+
+    basedir = MYDIR
+    outname = 'overview.md'
+    mergee_filenames = all_filenames
+    generate_overview(basedir, outname, mergee_filenames)
+    exit(0)
 
 loadee_filenames = pickup_corresponded_filenames(all_filenames)
 dp(loadee_filenames)

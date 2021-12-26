@@ -23,6 +23,9 @@ Create your today daily routines.
 - DOWs
 - Days
 
+## overview tasks
+Do `python todaros.py --overview`, and open `overview.md`.
+
 ## License
 [MIT License](LICENSE)
 
