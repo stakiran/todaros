@@ -1,8 +1,6 @@
 # encoding: utf-8
 
-import copy
 import datetime
-import glob
 import os
 import sys
 
@@ -16,180 +14,153 @@ def list2file(filepath, ls):
     with open(filepath, encoding='utf8', mode='w') as f:
         f.writelines(['{:}\n'.format(line) for line in ls] )
 
-def get_filename(path):
-    return os.path.basename(path)
-
-def get_basename(path):
-    return os.path.splitext(get_filename(path))[0]
-
-def get_markdown_filenames_only_currentlevel(fullpath_of_directory):
-    query = '{}/*.md'.format(fullpath_of_directory)
-    fullpaths = glob.glob(query, recursive=False)
-
-    filenames = []
-    for fullpath in fullpaths:
-        filename = get_filename(fullpath)
-        filenames.append(filename)
-    return filenames
-
 def get_today_datetimeobj():
     return datetime.datetime.today()
 
-def get_today_day():
-    dtobj = get_today_datetimeobj()
+def get_day(dtobj):
     return dtobj.day
 
-def get_today_dow_longname():
-    dtobj = get_today_datetimeobj()
+def get_dow(dtobj):
     dow_index = dtobj.weekday()
+    dow_shortnames = ['mon',"tue", "wed", "thu", "fri", "sat", "sun"]
+    return dow_shortnames[dow_index]
 
-    dow_longnames = ['monday',"tuesday", "wednesday", "thursday","friday","saturday","sunday"]
-    return dow_longnames[dow_index]
+# [タスク]
+# task1 @mon @fri @1 @10
+#
+# [Element]
+# task1 @mon @fri @1 @10
+# ^^^^^ ^^^^ ^^^^ ^^ ^^^
+#
+# [頻度(frequency)]
+# @m
+# @h
+# @k
+# @mon-sat
+# @1-31
+# @ss1, @ss2, @sss1, @sss2, @sss3
+class Task:
+    def __init__(self, line):
+        self._taskname = ''
+        self._freqs = []
 
-def _________func________():
-    pass
+        self._parse(line)
 
-def pickup_corresponded_filenames(filenames):
-    today_day = get_today_day()
-    today_dow_longname = get_today_dow_longname()
+    def _parse(self, line):
+        elements = line.split(' ')
+        for element in elements:
+            self._parse_element(element)
 
-    per2_table = ['slot1', 'slot2']
-    mod2 = today_day % 2
-    target_basename_of_per2 = '@2_{}'.format(per2_table[mod2])
+    def _parse_element(self, element):
+        is_freq = element[0]=='@'
+        if is_freq:
+            self._parse_as_freq(element)
+            return
+        self._parse_as_taskname(element)
 
-    per3_table = ['slot1', 'slot2', 'slot3']
-    mod3 = today_day % 3
-    target_basename_of_per3 = '@3_{}'.format(per3_table[mod3])
+    def _parse_as_freq(self, element):
+        self._freqs.append(element)
 
-    outnames = []
-    for filename in filenames:
-        basename = get_basename(filename)
-        b = basename
+    def _parse_as_taskname(self, element):
+        is_first = len(self._taskname)==0
+        if is_first:
+            self._taskname = element
+            return
+        newname = '{} {}'.format(self._taskname, element)
+        self._taskname = newname
 
-        if b == '@1':
-            outnames.append(filename)
-            continue
+    def is_delimitor(self):
+        # 頻度がない場合は区切りとみなす。
+        is_empty_taskname = len(self._taskname)==0
+        is_empty_freq = len(self._freqs)==0
+        if is_empty_freq and not is_empty_taskname:
+            return True
+        return False
 
-        if b == target_basename_of_per2:
-            outnames.append(filename)
-            continue
-
-        if b == target_basename_of_per3:
-            outnames.append(filename)
-            continue
-
-        if b==today_dow_longname:
-            outnames.append(filename)
-            continue
-        
-        if b.isnumeric() and today_day==int(b):
-            day = b
-            outnames.append(filename)
-            continue
-
-    return outnames
-
-# Routine Group という単語を定義する
-# - ('@1', '@1.md') のようなタプル
-# - (prefix, filename)
-#   - filename には n 個のタスク行が書かれている
-#   - prefix は、各タスク行の先頭に付与する補足文字列
-
-def create_routinegroups(filenames):
-    routinegroups = []
-    rgs = routinegroups
-
-    for filename in filenames:
-        if filename.startswith('@1'):
-            rgs.append(('@1', filename))
-            continue
-        if filename.startswith('@2'):
-            rgs.append(('@2', filename))
-            continue
-        if filename.startswith('@3'):
-            rgs.append(('@3', filename))
-            continue
-        if filename.endswith('day.md'):
-            rgs.append(('[Dow]', filename))
-            continue
-        rgs.append(('[Day]', filename))
-
-    return rgs
-
-def file2list_from_routinegroups(routinegroups):
-    ''' @params routinegroups routinegroupのリスト '''
-
-    result_outlines = []
-
-    for routinegroup in routinegroups:
-        prefix, filename = routinegroup
-        outlines = file2list(filename)
-
-        outlines = [line for line in outlines if len(line.strip())!=0]
-
-        # prefix だと次の reconstruction で上手くいかない
-        # こうしたいのに
-        #   1 @1 毎日やりたいタスク1
-        #   1 @1 毎日やりたいタスク2
-        # こうなってしまう、
-        #   @1 1 毎日やりたいタスク1
-        #   @1 1 毎日やりたいタスク2
+    def is_stealth_delimitor(self):
+        # 頻度だけがある場合はステルス区切りとみなす。
         #
-        # 前者の実装は文字列操作がしんどいので、以下のようにする
-        #   1 毎日やりたいタスク1 @1
-        #   1 毎日やりたいタスク2 @1
-        suffix = prefix
-        #outlines = ['{} {}'.format(prefix, line) for line in outlines]
-        outlines = ['{} {}'.format(line, suffix) for line in outlines]
+        # 例
+        # @sun
+        # @30
+        #
+        # ステルス区切りとは、入力ファイル上では区切りとして書くが
+        # 出力ファイル上では表示しないもの。
+        is_empty_taskname = len(self._taskname)==0
+        is_empty_freq = len(self._freqs)==0
+        if not is_empty_freq and is_empty_taskname:
+            return True
+        return False
 
-        result_outlines.extend(outlines)
+    def is_today_task(self):
+        # 日付オブジェクト毎回つくるの行儀悪いけど
+        # 高々数十のタスクだし、処理もほぼ一瞬だし
+        # 問題ないよね！
+        todaydt = get_today_datetimeobj()
 
-    return result_outlines
+        return is_today_freq(todaydt, self._freqs)
 
-def reconstruction_tasklines_with_extract_merge(lines):
-    # extract and merge
-    # 指定観点で抽出(extact)した部分リストをつくったあと、
-    # それらを指定順序で併合(merge)することで
-    # 意図した並びのリストをつくる手法.
+    @property
+    def displaytext(self):
+        if self.is_delimitor():
+            # 区切りは空行でいい
+            return ''
+        return self._taskname
 
-    outlines = []
+    def __str__(self):
+        return '{}: {}'.format(self._taskname, self._freqs)
 
-    extractee = copy.deepcopy(lines)
-    prefix_extracters = [
-        '0 ',
-        '1 ',
-        '2 ',
-        '3 ',
-        '4 ',
-        '5 ',
-        '6 ',
-        '7 ',
-        '8 ',
-        '9 ',
-    ]
+def line2task(line):
+    task = Task(line)
+    return task
 
-    for prefix_extracter in prefix_extracters:
-        extracted_lines = []
-        for line in extractee:
-            not_included = not line.startswith(prefix_extracter)
-            if not_included:
-                continue
-            extracted_lines.append(line)
+def is_today_freq(today_dtobj, freqs):
+    '''
+    @today_dtobj テストしやすいよう日付オブジェクトは外から与えさせる
+    '''
+    day = get_day(today_dtobj)
+    dow = get_dow(today_dtobj)
 
-        outlines.extend(extracted_lines)
+    for freq in freqs:
+        # @13
+        #  ^^ value
+        v = freq[1:]
 
-        for extracted_line in extracted_lines:
-            extractee.remove(extracted_line)
+        is_kyujitsu = dow=='sat' or dow=='sun'
+        is_heijitsu = not is_kyujitsu
 
-    # 最後に「抽出されなかった行たち」を merge する必要がある。
-    # これを行いたいがために、上記処理では extractee を破壊的に remove していっている。
-    not_extracted_lines = extractee
-    outlines.extend(not_extracted_lines)
+        if freq=='@m':
+            return True
 
-    return outlines
+        if freq=='@h' and is_heijitsu:
+            return True
 
-def ________arguments________():
-    pass
+        if freq=='@k' and is_kyujitsu:
+            return True
+
+        if v==dow:
+            return True
+
+        if v.isnumeric() and day==int(v):
+            return True
+
+        is_ss1 = day%2==1
+        is_ss2 = day%2==0
+        is_sss1 = day%3==1
+        is_sss2 = day%3==2
+        is_sss3 = day%3==0
+        if v=='ss1' and is_ss1:
+            return True
+        if v=='ss2' and is_ss2:
+            return True
+        if v=='sss1' and is_sss1:
+            return True
+        if v=='sss2' and is_sss2:
+            return True
+        if v=='sss3' and is_sss3:
+            return True
+
+    return False
 
 def parse_arguments():
     import argparse
@@ -199,87 +170,61 @@ def parse_arguments():
     )
 
     parser.add_argument('--debug', default=False, action='store_true',
-        help='debug print.')
+        help='Enable debug print. No output generation.')
 
-    parser.add_argument('--overview', default=False, action='store_true',
-        help='Generate overview.md.')
+    parser.add_argument('-i', '--input', default='tasks.md',
+        help='A file contained task lines.')
+
+    parser.add_argument('-o', '--output', default='daily.md',
+        help='A file of daily tasks output target.')
 
     args = parser.parse_args()
     return args
 
-def dp(msg):
-    if args.debug:
-        print(msg)
-
-def generate_overview(basedir, outname, maybe_mergee_filenames):
-    mergee_filenames = []
-    outlines = []
-
-    # ルーチンを定義してない無関係ファイルを除く。
-    # 良いやり方浮かばないので、todarosが扱っているファイル名が存在してるかを愚直に調べていく。
-    # これには意図した順番で append したいという意図もある。
-    for i in range(31):
-        day = i+1
-        dayfilename = '{}.md'.format(day)
-        notfound = not dayfilename in maybe_mergee_filenames
-        if notfound:
-            continue
-        mergee_filenames.append(dayfilename)
-    for routinefilename in ['@1.md','@2_slot1.md','@2_slot2.md','@3_slot1.md','@3_slot2.md','@3_slot3.md']:
-        notfound = not routinefilename in maybe_mergee_filenames
-        if notfound:
-            continue
-        mergee_filenames.append(routinefilename)
-    # 作者の好みで月曜始まり
-    for dowfilename in ['monday.md','tuesday.md','wednesday.md','thursday.md','friday.md','saturday.md','sunday.md']:
-        notfound = not dowfilename in maybe_mergee_filenames
-        if notfound:
-            continue
-        mergee_filenames.append(dowfilename)
-
-    for mergee_filename in mergee_filenames:
-        mergee_fullpath = os.path.join(basedir, mergee_filename)
-        mergee_content_lines = file2list(mergee_fullpath)
-
-        outlines.append('# {}'.format(mergee_filename))
-        outlines.extend(mergee_content_lines)
-
-        blankline_for_readability = ''
-        outlines.append(blankline_for_readability)
-
-    outfullpath = os.path.join(basedir, outname)
-    list2file(outfullpath, outlines)
-
 def ________main________():
     pass
 
-args = parse_arguments()
+if __name__=='__main__':
+    args = parse_arguments()
 
-MYFULLPATH = os.path.abspath(sys.argv[0])
-MYDIR = os.path.dirname(MYFULLPATH)
+    MYFULLPATH = os.path.abspath(sys.argv[0])
+    MYDIR = os.path.dirname(MYFULLPATH)
 
-OUTNAME = 'daily.md'
-OUT_FULLPATH = os.path.join(MYDIR, OUTNAME)
+    in_fullpath = os.path.join(MYDIR, args.input)
+    out_fullpath = os.path.join(MYDIR, args.output)
 
-all_filenames = get_markdown_filenames_only_currentlevel(MYDIR)
-dp(all_filenames)
+    lines = file2list(in_fullpath)
+    tasks = []
+    for line in lines:
+        is_blankline = len(line.strip())==0
+        if is_blankline:
+            continue
 
-if args.overview:
-    routinegroups = create_routinegroups(all_filenames)
+        is_sectionline = line[0]=='#'
+        if is_sectionline:
+            continue
 
-    basedir = MYDIR
-    outname = 'overview.md'
-    mergee_filenames = all_filenames
-    generate_overview(basedir, outname, mergee_filenames)
-    exit(0)
+        task = line2task(line)
+        tasks.append(task)
 
-loadee_filenames = pickup_corresponded_filenames(all_filenames)
-dp(loadee_filenames)
+    today_tasks = []
+    for task in tasks:
+        if task.is_delimitor():
+            today_tasks.append(task)
+            continue
+        if task.is_today_task():
+            today_tasks.append(task)
+            continue
 
-routinegroups = create_routinegroups(loadee_filenames)
-dp(routinegroups)
+    if args.debug:
+        for task in today_tasks:
+            if task.is_stealth_delimitor():
+                continue
+            print(task.displaytext)
+        sys.exit(0)
 
-tasklines = file2list_from_routinegroups(routinegroups)
-
-outlines = reconstruction_tasklines_with_extract_merge(tasklines)
-list2file(OUT_FULLPATH, outlines)
+    outlines = []
+    for task in today_tasks:
+        outline = task.displaytext
+        outlines.append(outline)
+    list2file(out_fullpath, outlines)
